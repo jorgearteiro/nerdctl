@@ -21,7 +21,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -29,17 +28,13 @@ import (
 
 	"github.com/containerd/console"
 	"github.com/containerd/containerd"
-	"github.com/containerd/containerd/cio"
 	"github.com/containerd/containerd/cmd/ctr/commands"
 	"github.com/containerd/containerd/cmd/ctr/commands/tasks"
 	"github.com/containerd/containerd/containers"
 	"github.com/containerd/containerd/oci"
-	"github.com/containerd/containerd/plugin"
 	"github.com/containerd/containerd/runtime/restart"
 	gocni "github.com/containerd/go-cni"
 	"github.com/containerd/nerdctl/pkg/defaults"
-	"github.com/containerd/nerdctl/pkg/dnsutil"
-	"github.com/containerd/nerdctl/pkg/dnsutil/hostsstore"
 	"github.com/containerd/nerdctl/pkg/idgen"
 	"github.com/containerd/nerdctl/pkg/imgutil"
 	"github.com/containerd/nerdctl/pkg/labels"
@@ -187,7 +182,7 @@ var runCommand = &cli.Command{
 		&cli.StringFlag{
 			Name:  "runtime",
 			Usage: "Runtime to use for this container, e.g. \"crun\", or \"io.containerd.runsc.v1\"",
-			Value: plugin.RuntimeRuncV2,
+			Value: defaults.Runtime(),
 		},
 		&cli.StringSliceFlag{
 			Name:  "sysctl",
@@ -276,6 +271,9 @@ func runAction(clicontext *cli.Context) error {
 	}
 
 	ns := clicontext.String("namespace")
+	flagI := clicontext.Bool("i")
+	flagT := clicontext.Bool("t")
+	flagD := clicontext.Bool("d")
 
 	client, ctx, cancel, err := newClient(clicontext)
 	if err != nil {
@@ -300,6 +298,7 @@ func runAction(clicontext *cli.Context) error {
 		return err
 	}
 
+	id := idgen.GenerateID()
 	stateDir, err := getContainerStateDirPath(clicontext, dataStore, id)
 	if err != nil {
 		return err
@@ -556,7 +555,7 @@ func runAction(clicontext *cli.Context) error {
 	spec := containerd.WithSpec(&s, opts...)
 	cOpts = append(cOpts, spec)
 
-	container, err := client.NewContainer(ctx, id, cOpts...)
+	container, err := NewContainer(ctx, clicontext, client, dataStore, id)
 	if err != nil {
 		return err
 	}
@@ -579,6 +578,11 @@ func runAction(clicontext *cli.Context) error {
 		if err := con.SetRaw(); err != nil {
 			return err
 		}
+	}
+
+	logURI, err := generateLogUri(flagD, dataStore)
+	if err != nil {
+		return err
 	}
 
 	task, err := taskutil.NewTask(ctx, client, container, flagI, flagT, flagD, con, logURI)
@@ -738,17 +742,6 @@ func withCustomHosts(src string) func(context.Context, oci.Client, *containers.C
 		})
 		return nil
 	}
-}
-
-func generateLogURI(dataStore string) (*url.URL, error) {
-	selfExe, err := os.Readlink("/proc/self/exe")
-	if err != nil {
-		return nil, err
-	}
-	args := map[string]string{
-		logging.MagicArgv1: dataStore,
-	}
-	return cio.LogURIGenerator("binary", selfExe, args)
 }
 
 func withNerdctlOCIHook(clicontext *cli.Context, id, stateDir string) (oci.SpecOpts, error) {

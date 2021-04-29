@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	github.com/Microsoft/go-winio v0.5.0
+	github.com/Microsoft/hcsshim v0.8.16
 	github.com/compose-spec/compose-go v0.0.0-20210827054550-c78dcffd54c5
 	github.com/containerd/cgroups v1.0.1
 	github.com/containerd/console v1.0.3
